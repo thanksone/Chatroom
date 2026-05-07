@@ -39,6 +39,7 @@ let notifiedMessageIdsByRoom = new Map();
 let initializedMessageRooms = new Set();
 let unsubscribeRooms = null;
 let unsubscribeMessages = null;
+let unsubscribeMemberProfiles = [];
 let replyTarget = null;
 let allMessages = [];
 let knownUsers = new Map();
@@ -77,23 +78,43 @@ function blockedMe(uid) {
   return blockedUsersOf(knownUsers.get(uid)).includes(currentUser?.uid);
 }
 
+function isDirectRoom(room = activeRoom) {
+  const members = room?.members || [];
+  return members.length === 2 && room?.type !== "group";
+}
+
+function getOtherDirectMember(room = activeRoom) {
+  if (!isDirectRoom(room) || !currentUser) return null;
+  return (room.members || []).find((uid) => uid !== currentUser.uid) || null;
+}
+
 function isHiddenByBlock(senderUid) {
+  // In group chats, blocked users should be mutually hidden.
+  // In direct chats, old history remains visible, but sending is disabled with a warning.
   if (!senderUid || senderUid === currentUser?.uid) return false;
+  if (isDirectRoom()) return false;
   return iBlocked(senderUid) || blockedMe(senderUid);
 }
 
 function activeDirectBlockInfo() {
-  if (!activeRoom || !currentUser) return { blocked: false, message: "" };
-  const members = activeRoom.members || [];
-  if (members.length !== 2) return { blocked: false, message: "" };
-  const otherUid = members.find((uid) => uid !== currentUser.uid);
+  if (!activeRoom || !currentUser || !isDirectRoom()) return { blocked: false, message: "" };
+  const otherUid = getOtherDirectMember();
   if (!otherUid) return { blocked: false, message: "" };
+
   if (iBlocked(otherUid)) {
-    return { blocked: true, message: `You blocked ${userLabel(otherUid)}. Unblock this user to continue chatting.` };
+    return {
+      blocked: true,
+      message: `You blocked ${userLabel(otherUid)}. This direct chat is disabled until you unblock this user.`
+    };
   }
+
   if (blockedMe(otherUid)) {
-    return { blocked: true, message: `${userLabel(otherUid)} has blocked you. You can no longer send direct messages in this chat.` };
+    return {
+      blocked: true,
+      message: `${userLabel(otherUid)} has blocked you. You can no longer send direct messages to this user.`
+    };
   }
+
   return { blocked: false, message: "" };
 }
 
@@ -116,6 +137,9 @@ function cleanupSessionUI() {
     unsubscribeMessages();
     unsubscribeMessages = null;
   }
+
+  unsubscribeMemberProfiles.forEach((unsubscribe) => unsubscribe());
+  unsubscribeMemberProfiles = [];
 
   currentUser = null;
   currentProfile = null;
@@ -361,7 +385,7 @@ async function createPrivateRoom() {
     const roomId = members.join("_");
 
     const room = {
-      type: "private",
+      type: "direct",
       name: `${currentProfile.username || currentUser.email} / ${friend.username || friend.email}`,
       members,
       memberEmails: [currentUser.email, friend.email],
@@ -418,10 +442,31 @@ function loadRooms() {
 
 async function loadMemberProfiles(memberIds = []) {
   await Promise.all(memberIds.map(async (uid) => {
-    if (knownUsers.has(uid)) return;
     const snap = await db.collection("users").doc(uid).get();
     if (snap.exists) knownUsers.set(uid, snap.data());
   }));
+}
+
+function listenMemberProfiles(memberIds = []) {
+  unsubscribeMemberProfiles.forEach((unsubscribe) => unsubscribe());
+  unsubscribeMemberProfiles = [];
+
+  memberIds.forEach((uid) => {
+    const unsubscribe = db.collection("users").doc(uid).onSnapshot((snap) => {
+      if (!snap.exists) return;
+      knownUsers.set(uid, snap.data());
+
+      if (uid === currentUser?.uid) {
+        currentProfile = { ...currentProfile, ...snap.data() };
+        renderCurrentUser();
+      }
+
+      updateChatInputState();
+      renderMessages(false);
+    }, (error) => showError(error));
+
+    unsubscribeMemberProfiles.push(unsubscribe);
+  });
 }
 
 async function selectRoom(roomId, room) {
@@ -439,6 +484,7 @@ async function selectRoom(roomId, room) {
   $("messages").innerHTML = "";
   $("invite-room-btn").disabled = false;
   await loadMemberProfiles(room.members || []);
+  listenMemberProfiles(room.members || []);
   updateChatInputState();
 
   clearReply();
@@ -730,11 +776,11 @@ function scrollToMessage(msgId) {
 
 async function requestNotificationPermission() {
   if (!("Notification" in window)) {
-    alert("This browser does not support notifications.");
+    alert("This browser does not support Chrome notifications.");
     return;
   }
   const result = await Notification.requestPermission();
-  alert(result === "granted" ? "Notifications enabled." : "Notification permission was not granted.");
+  alert(result === "granted" ? "Chrome notifications enabled." : "Notification permission was not granted.");
 }
 
 function maybeNotifyUnreadMessages(roomId, messages, firstLoad) {
@@ -763,19 +809,47 @@ function maybeNotifyUnreadMessages(roomId, messages, firstLoad) {
   });
 }
 
+async function getBlockTargetUser() {
+  const typedEmail = $("invite-email").value.trim();
+  if (typedEmail) return findUserByEmail(typedEmail);
+
+  const otherUid = getOtherDirectMember();
+  if (!otherUid) {
+    throw new Error("Enter a user's email, or select a direct chat first.");
+  }
+
+  let profile = knownUsers.get(otherUid);
+  if (!profile) {
+    const snap = await db.collection("users").doc(otherUid).get();
+    if (!snap.exists) throw new Error("Cannot find that user profile.");
+    profile = snap.data();
+    knownUsers.set(otherUid, profile);
+  }
+
+  return { uid: otherUid, ...profile };
+}
+
 async function blockUserFromInput() {
   try {
-    const friend = await findUserByEmail($("invite-email").value);
+    const friend = await getBlockTargetUser();
     if (friend.uid === currentUser.uid) throw new Error("You cannot block yourself.");
+
     await db.collection("users").doc(currentUser.uid).set({
       blockedUsers: FieldValue.arrayUnion(friend.uid),
       updatedAt: FieldValue.serverTimestamp()
     }, { merge: true });
+
     currentProfile.blockedUsers = Array.from(new Set([...(blockedUsersOf(currentProfile)), friend.uid]));
     knownUsers.set(currentUser.uid, currentProfile);
+
     updateChatInputState();
     renderMessages(false);
-    alert(`Blocked ${friend.username || friend.email}.`);
+
+    if (isDirectRoom() && getOtherDirectMember() === friend.uid) {
+      alert(`Blocked ${friend.username || friend.email}. This direct chat is now disabled.`);
+    } else {
+      alert(`Blocked ${friend.username || friend.email}. In group chats, your messages are mutually hidden.`);
+    }
   } catch (e) {
     alert(e.message || e);
   }
@@ -783,13 +857,16 @@ async function blockUserFromInput() {
 
 async function unblockUserFromInput() {
   try {
-    const friend = await findUserByEmail($("invite-email").value);
+    const friend = await getBlockTargetUser();
+
     await db.collection("users").doc(currentUser.uid).set({
       blockedUsers: FieldValue.arrayRemove(friend.uid),
       updatedAt: FieldValue.serverTimestamp()
     }, { merge: true });
+
     currentProfile.blockedUsers = blockedUsersOf(currentProfile).filter((uid) => uid !== friend.uid);
     knownUsers.set(currentUser.uid, currentProfile);
+
     updateChatInputState();
     renderMessages(false);
     alert(`Unblocked ${friend.username || friend.email}.`);

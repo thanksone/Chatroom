@@ -730,11 +730,11 @@ function scrollToMessage(msgId) {
 
 async function requestNotificationPermission() {
   if (!("Notification" in window)) {
-    alert("This browser does not support notifications.");
+    alert("This browser does not support Chrome notifications.");
     return;
   }
   const result = await Notification.requestPermission();
-  alert(result === "granted" ? "Notifications enabled." : "Notification permission was not granted.");
+  alert(result === "granted" ? "Chrome notifications enabled." : "Notification permission was not granted.");
 }
 
 function maybeNotifyUnreadMessages(roomId, messages, firstLoad) {
