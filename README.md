@@ -1,13 +1,20 @@
-# Chatroom
+# NTHU Chatroom Midterm Project
+
+A Firebase-based chatroom web app for the Software Studio midterm project.
+
 ## Implementation status
+
 ### Basic components
-Email sign up
-Email sign in
-Firebase Hosting
-Authenticated database read/write | Done | `firestore.rules`, `main.js` Firestore calls |
-RWD | Done | `style.css`, media query for small screens |
-Git version control | Done locally | Use your GitLab/GitHub URL for submission |
-Chatroom | Done | Direct rooms, group invite, history loading, realtime messages |
+
+| Requirement | Status | Where to check |
+|---|---:|---|
+| Email sign up | Done | Login page -> Sign Up |
+| Email sign in | Done | Login page -> Sign In |
+| Firebase Hosting | Done | `firebase.json`, `index.html`, `/__/firebase/init.js` |
+| Authenticated database read/write | Done | `firestore.rules`, `main.js` Firestore calls |
+| RWD | Done | `style.css`, media query for small screens |
+| Git version control | Done locally | Use your GitLab/GitHub URL for submission |
+| Chatroom | Done | Direct rooms, group invite, history loading, realtime messages |
 
 ### Advanced components
 
