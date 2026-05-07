@@ -1,52 +1,127 @@
-# NTHU Chatroom Midterm Project
+# Chatroom
+## Implementation status
+### Basic components
+Email sign up
+Email sign in
+Firebase Hosting
+Authenticated database read/write | Done | `firestore.rules`, `main.js` Firestore calls |
+RWD | Done | `style.css`, media query for small screens |
+Git version control | Done locally | Use your GitLab/GitHub URL for submission |
+Chatroom | Done | Direct rooms, group invite, history loading, realtime messages |
 
-This project is a Firebase chatroom app for the Software Studio midterm.
+### Advanced components
 
-## Functions
+| Requirement | Status | Notes |
+|---|---:|---|
+| Sign in/up with Google | Done | Enable Google provider in Firebase Console first |
+| Chrome notification | Done | Click **Notify** after login; only notifies unread incoming messages when the tab is not focused |
+| CSS animation | Done | Login card, room list, new messages, input glow |
+| Deal with problems when sending code | Done | HTML is escaped, so `<script>` and `<h1>` show as text instead of executing/rendering |
+| User profile | Done | Modal with uploadable profile picture, username, email, phone, address |
+| Message operations | Done | Edit own messages, unsend own messages, search, send images |
+| Framework such as React | Not used | This project uses vanilla HTML/CSS/JavaScript. This optional advanced item is not claimed. |
 
-- Email sign up/sign in and Google sign in/sign up by Firebase Authentication.
-- Private chatrooms: enter a registered friend's email and click **Create Private Room**.
-- Group chat: after selecting a room, enter another registered email and click **Invite To Current Room**.
-- Realtime Firestore messages: all members can see messages and history is loaded when opening a room.
-- Profile modal with uploadable profile picture, username, email, phone number, and address.
-- The chatroom displays sender username/email and profile picture with every message.
-- Message operations: reply, edit own message, unsend own message, search messages, send image as base64 data, and emoji reactions.
-- Reply UI: the original message is shown above the input while typing, and clicking a reply scrolls/highlights the original message.
-- XSS/code handling: message text is rendered by escaping HTML characters, so `<script>` and `<h1>` are displayed as text instead of executed as HTML.
-- Responsive layout for desktop and small screens.
-- CSS animation for new messages.
-- Chrome notifications: click **Notify** after signing in to allow notifications for unread incoming messages while the tab is not focused.
-- Block/unblock user: enter a registered email and use **Block User** or **Unblock User**. Direct chats are disabled when either side blocks the other. In group chats, messages are hidden mutually between blocker and blocked user.
+### Bonus-related features implemented
 
-## How to use the website
+These are bonus items, but some are implemented:
 
-1. Open the deployed Firebase Hosting URL.
-2. Register two accounts with different email addresses, or click **Sign in / up with Google**.
-3. Sign in with one account.
-4. Type the second account's email into **Friend email**.
-5. Click **Create Private Room**.
-6. Type a message and press **Send** or Enter.
-7. Sign in with the other account in another browser/incognito window to verify realtime chat.
-8. Use the buttons under each message for reply, emoji, edit, and unsend.
-9. Use the image button to send an image.
-10. Click **Edit** to upload a profile picture and save your profile.
-11. Click **Notify** to enable Chrome notifications.
-12. To block or unblock someone, enter their email in **Friend email** and click **Block User** or **Unblock User**.
-13. Use the search box in the chat header to search messages.
+- Block/unblock user
+- Emoji reactions on messages
+- Reply to specific message, including scroll/highlight original message
 
-## How to set up locally step by step
+Not implemented:
 
-### 1. Install tools
+- Chatbot
+- Tenor GIF sending
+- Custom sticker drawing canvas
 
-Install Firebase CLI if it is not installed:
+## Main functions
+
+### Authentication
+
+Users can create an account with email/password or sign in/sign up with Google. Firebase Authentication is used for all login flows.
+
+### Profile
+
+Click **Edit** in the sidebar to open the profile modal. The profile contains:
+
+- Profile picture upload
+- Username
+- Email display
+- Phone number
+- Address
+
+The profile picture and username/email are displayed in chat messages.
+
+### Direct chatroom
+
+1. Sign in.
+2. Enter another registered user's email in the **Friend email** field.
+3. Click **Create Direct Room**.
+4. The direct room appears in the room list.
+5. Click the room and send messages.
+
+### Group chatroom
+
+1. Open an existing direct room.
+2. Enter another registered user's email in the **Friend email** field.
+3. Click **Invite To Current Room**.
+4. The room becomes a group chat.
+
+### Messages
+
+Inside a selected room, users can:
+
+- Send text messages
+- Send images
+- Reply to specific messages
+- Click a replied message to scroll/highlight the original message
+- Add/remove emoji reactions
+- Edit their own messages
+- Unsend their own messages
+- Search messages using the search box
+
+### Code-safe sending
+
+Messages are rendered with escaped HTML. For example, sending this:
+
+```html
+<script>alert("example")</script>
+<h1>example</h1>
+```
+
+will display the code as plain text instead of running the script or rendering an actual heading.
+
+### Chrome notifications
+
+1. Sign in.
+2. Click **Notify**.
+3. Allow notifications in Chrome.
+4. When the tab is not focused, incoming messages from other users create unread notifications.
+
+### Block/unblock user
+
+Enter a registered user's email in **Friend email**, then click **Block User** or **Unblock User**.
+
+Direct chat behavior:
+
+- If User A blocks User B, both users still see the existing chat history.
+- The direct chat displays a warning notification.
+- The message input, image upload, and send button are disabled.
+- User B cannot send direct messages to User A anymore.
+- After User A unblocks User B, the direct chat can be used again.
+
+Group chat behavior:
+
+- Blocking does not disable the group chat.
+- Messages between blocker and blocked user are mutually hidden.
+
+## Firebase setup
+
+### 1. Install Firebase CLI
 
 ```bash
 npm install -g firebase-tools
-```
-
-Login:
-
-```bash
 firebase login
 ```
 
@@ -56,59 +131,85 @@ In Firebase Console:
 
 1. Create a Firebase project.
 2. Add a Web App.
-3. Enable **Authentication > Sign-in method > Email/Password** and **Google**.
-4. Create a Firestore database.
-5. Add your local/deployed domain in **Authentication > Settings > Authorized domains** if needed.
+3. Enable **Authentication -> Sign-in method -> Email/Password**.
+4. Enable **Authentication -> Sign-in method -> Google**.
+5. Create a Firestore database.
+6. Add your Firebase Hosting domain to **Authentication -> Settings -> Authorized domains** if needed.
 
-### 3. Fix Firebase config for local testing
+### 3. Firebase config
 
-On Firebase Hosting, `/__/firebase/init.js` automatically initializes the deployed project's config.
+On Firebase Hosting, this line in `index.html` automatically loads the correct Firebase project config:
 
-For local testing, open `main.js` and replace this fallback value:
-
-```js
-apiKey: "REPLACE_WITH_YOUR_REAL_API_KEY"
+```html
+<script src="/__/firebase/init.js"></script>
 ```
 
-Use Firebase Console -> Project settings -> Your apps -> SDK setup and configuration.
+For local testing without Firebase Hosting, open `main.js` and make sure `fallbackFirebaseConfig` matches your Firebase Web App config from:
 
-If you see `FirebaseError: Firebase: Error (auth/invalid-api-key)`, your API key is wrong, deleted, restricted incorrectly, or the deployed site is not using the same Firebase project. Copy the Web App config again and deploy again.
+```text
+Firebase Console -> Project settings -> Your apps -> SDK setup and configuration
+```
 
 ### 4. Deploy Firestore rules and hosting
 
-From this folder:
+If this is your Firebase project:
 
 ```bash
 firebase use chatroom-1145141919810
 firebase deploy --only firestore:rules,hosting
 ```
 
-If you use another project:
+If you are using another project:
 
 ```bash
 firebase use --add
 firebase deploy --only firestore:rules,hosting
 ```
 
-### 5. Test
+### 5. Test locally with Firebase Hosting emulator
 
-Open the hosting URL and create two accounts. Create a private room using the other account's email and test chat in two browsers.
+```bash
+firebase emulators:start --only hosting,firestore
+```
 
-## Submission reminder
+Then open the local hosting URL shown in the terminal.
 
-Do not include `node_modules` in the ZIP file. Generate and submit the MD5 checksum according to the course SOP.
+## Testing checklist
 
+Before submission, test these with two browser windows or one normal window plus one incognito window:
 
-## Block / unblock behavior
+1. Sign up user A with email/password.
+2. Sign up user B with email/password.
+3. Sign in user A.
+4. Create a direct room with user B's email.
+5. Send text messages from both sides.
+6. Refresh the page and confirm history loads.
+7. Reply to a message and click the reply preview to highlight the original.
+8. Edit and unsend your own message.
+9. Send an image.
+10. Search message text.
+11. Add and remove emoji reactions.
+12. Upload a profile picture and check whether it appears beside messages.
+13. Enable Chrome notifications and test incoming messages while the tab is unfocused.
+14. Block user B from user A and confirm direct chat is disabled with a warning.
+15. Unblock user B and confirm direct chat works again.
+16. Invite a third user to make a group chat and confirm blocking hides mutual messages instead of disabling the group.
 
-- Direct chats are rooms with exactly two members and `type: "direct"` or older `type: "private"`.
-- If User A blocks User B, both users will see a warning in the direct chat history and the message input/image upload will be disabled.
-- User B cannot send direct messages to User A anymore. This is enforced in both the UI and Firestore security rules.
-- Group chats are rooms with `type: "group"`. Blocking does not disable the whole group chat. Instead, messages between the blocker and blocked user are mutually hidden.
-- To block or unblock someone, select a direct chat and press Block User / Unblock User, or type the target user's email in the Friend email box first.
+## Submission notes
 
-## Advanced components added in this version
+Do not include these in the submitted ZIP:
 
-- **Google sign in/up:** click **Sign in / up with Google** on the login screen. In Firebase Console, remember to enable Authentication > Sign-in method > Google and add your Firebase Hosting domain to authorized domains.
-- **CSS animation:** login card entrance animation, room list entrance animation, message slide-in animation, and input glow when typing.
-- **Safe code sending / XSS handling:** message text is escaped before rendering. This means code such as `<script>alert("example")</script>` or `<h1>example</h1>` is shown as text, not executed or rendered as HTML. Line breaks and indentation are preserved for pasted code snippets.
+- `node_modules/`
+- `.git/`
+- `.firebase/`
+- Vim swap files such as `.main.js.swp`
+- Backup files such as `main.js.bak`
+
+Generate the checksum after creating the final ZIP:
+
+```bash
+zip -r Midterm_Project_STUDENTID.zip . -x "node_modules/*" ".git/*" ".firebase/*" "*.swp" "*.bak"
+md5sum Midterm_Project_STUDENTID.zip
+```
+
+Submit the ZIP, MD5 checksum, deployed web link, and Git URL according to the course SOP.
