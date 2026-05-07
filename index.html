@@ -10,13 +10,14 @@
   <div id="auth-container" class="overlay">
     <section class="auth-box card">
       <h1>Chatroom Login</h1>
-      <p class="hint">Sign up or sign in with email/password.</p>
+      <p class="hint">Sign up or sign in with email/password, or use Google.</p>
       <input type="email" id="email" placeholder="Email" autocomplete="email" />
       <input type="password" id="password" placeholder="Password" autocomplete="current-password" />
       <div class="auth-buttons">
         <button id="login-btn">Sign In</button>
         <button id="signup-btn" class="secondary">Sign Up</button>
       </div>
+      <button id="google-login-btn" class="google-btn" type="button">Sign in / up with Google</button>
       <p id="auth-error" class="error-text"></p>
     </section>
   </div>
@@ -36,7 +37,7 @@
 
       <div class="room-tools">
         <input type="email" id="invite-email" placeholder="Friend email" />
-        <button id="create-room-btn">Create Private Room</button>
+        <button id="create-room-btn">Create Direct Room</button>
         <button id="invite-room-btn" class="secondary" disabled>Invite To Current Room</button>
         <div class="block-buttons">
           <button id="block-user-btn" class="secondary">Block User</button>

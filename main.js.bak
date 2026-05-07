@@ -26,14 +26,12 @@ if (!firebase.apps.length) {
 const auth = firebase.auth();
 const db = firebase.firestore();
 const FieldValue = firebase.firestore.FieldValue;
-const googleProvider = new firebase.auth.GoogleAuthProvider();
-googleProvider.setCustomParameters({ prompt: "select_account" });
 
 let currentUser = null;
 let currentProfile = null;
 let currentRoomId = null;
 let currentRoomData = null;
-let renderedMessageIds = new Set();
+
 let activeRoomId = null;
 let activeRoom = null;
 let selectedProfilePhotoData = "";
@@ -41,7 +39,6 @@ let notifiedMessageIdsByRoom = new Map();
 let initializedMessageRooms = new Set();
 let unsubscribeRooms = null;
 let unsubscribeMessages = null;
-let unsubscribeMemberProfiles = [];
 let replyTarget = null;
 let allMessages = [];
 let knownUsers = new Map();
@@ -51,15 +48,6 @@ const $ = (id) => document.getElementById(id);
 const clean = (text = "") => String(text).replace(/[&<>'"]/g, (c) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"
 }[c]));
-
-function formatMessageText(text = "") {
-  // Escape HTML so code like <script>alert("x")</script> and <h1>title</h1>
-  // is displayed as plain text instead of becoming executable/rendered HTML.
-  // Also preserve line breaks and indentation for pasted code snippets.
-  return clean(text)
-    .replace(/ {2}/g, "&nbsp;&nbsp;")
-    .replace(/\n/g, "<br>");
-}
 
 function showError(error) {
   const message = error && error.message ? error.message : String(error);
@@ -89,50 +77,23 @@ function blockedMe(uid) {
   return blockedUsersOf(knownUsers.get(uid)).includes(currentUser?.uid);
 }
 
-function isDirectRoom(room = activeRoom) {
-  const members = room?.members || [];
-  return members.length === 2 && room?.type !== "group";
-}
-
-function getOtherDirectMember(room = activeRoom) {
-  if (!isDirectRoom(room) || !currentUser) return null;
-  return (room.members || []).find((uid) => uid !== currentUser.uid) || null;
-}
-
 function isHiddenByBlock(senderUid) {
-  // In group chats, blocked users should be mutually hidden.
-  // In direct chats, old history remains visible, but sending is disabled with a warning.
   if (!senderUid || senderUid === currentUser?.uid) return false;
-  if (isDirectRoom()) return false;
   return iBlocked(senderUid) || blockedMe(senderUid);
 }
 
 function activeDirectBlockInfo() {
-  if (!activeRoom || !currentUser || !isDirectRoom()) {
-    return { blocked: false, message: "" };
+  if (!activeRoom || !currentUser) return { blocked: false, message: "" };
+  const members = activeRoom.members || [];
+  if (members.length !== 2) return { blocked: false, message: "" };
+  const otherUid = members.find((uid) => uid !== currentUser.uid);
+  if (!otherUid) return { blocked: false, message: "" };
+  if (iBlocked(otherUid)) {
+    return { blocked: true, message: `You blocked ${userLabel(otherUid)}. Unblock this user to continue chatting.` };
   }
-
-  const otherUid = getOtherDirectMember();
-  if (!otherUid) {
-    return { blocked: false, message: "" };
+  if (blockedMe(otherUid)) {
+    return { blocked: true, message: `${userLabel(otherUid)} has blocked you. You can no longer send direct messages in this chat.` };
   }
-
-  const blockedBy = Array.isArray(activeRoom.blockedBy) ? activeRoom.blockedBy : [];
-
-  if (blockedBy.includes(currentUser.uid)) {
-    return {
-      blocked: true,
-      message: `You blocked ${userLabel(otherUid)}. This direct chat is disabled until you unblock this user.`
-    };
-  }
-
-  if (blockedBy.includes(otherUid)) {
-    return {
-      blocked: true,
-      message: `${userLabel(otherUid)} has blocked you. You can no longer send direct messages to this user.`
-    };
-  }
-
   return { blocked: false, message: "" };
 }
 
@@ -155,9 +116,6 @@ function cleanupSessionUI() {
     unsubscribeMessages();
     unsubscribeMessages = null;
   }
-
-  unsubscribeMemberProfiles.forEach((unsubscribe) => unsubscribe());
-  unsubscribeMemberProfiles = [];
 
   currentUser = null;
   currentProfile = null;
@@ -191,7 +149,7 @@ async function ensureUserProfile(user) {
   const base = {
     uid: user.uid,
     email: user.email,
-    username: user.displayName || (user.email ? user.email.split("@")[0] : "User"),
+    username: user.email ? user.email.split("@")[0] : "User",
     photoURL: user.photoURL || "",
     phone: "",
     address: "",
@@ -203,15 +161,8 @@ async function ensureUserProfile(user) {
     await ref.set(base);
     return { ...base, createdAt: null, updatedAt: null };
   }
-  const existing = snap.data();
-  const updates = {
-    email: user.email,
-    updatedAt: FieldValue.serverTimestamp()
-  };
-  if (!existing.username && user.displayName) updates.username = user.displayName;
-  if (!existing.photoURL && user.photoURL) updates.photoURL = user.photoURL;
-  await ref.set(updates, { merge: true });
-  return { ...existing, ...updates, email: user.email };
+  await ref.set({ email: user.email, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  return { ...snap.data(), email: user.email };
 }
 
 function renderCurrentUser() {
@@ -232,15 +183,6 @@ $("login-btn").onclick = async () => {
     $("auth-error").textContent = "";
     await auth.signInWithEmailAndPassword($("email").value.trim(), $("password").value);
   } catch (e) { showError(e); }
-};
-
-$("google-login-btn").onclick = async () => {
-  try {
-    $("auth-error").textContent = "";
-    await auth.signInWithPopup(googleProvider);
-  } catch (e) {
-    showError(e);
-  }
 };
 
 $("logout-btn").onclick = async () => {
@@ -418,17 +360,16 @@ async function createPrivateRoom() {
     const members = [currentUser.uid, friend.uid].sort();
     const roomId = members.join("_");
 
-	const room = {
-	  type: "direct",
-	  name: `${currentProfile.username || currentUser.email} / ${friend.username || friend.email}`,
-	  members,
-	  memberEmails: [currentUser.email, friend.email],
-	  memberKey: roomId,
-	  blockedBy: [],
-	  createdBy: currentUser.uid,
-	  createdAt: FieldValue.serverTimestamp(),
-	  updatedAt: FieldValue.serverTimestamp()
-	};
+    const room = {
+      type: "private",
+      name: `${currentProfile.username || currentUser.email} / ${friend.username || friend.email}`,
+      members,
+      memberEmails: [currentUser.email, friend.email],
+      memberKey: roomId,
+      createdBy: currentUser.uid,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
+    };
 
     const ref = db.collection("rooms").doc(roomId);
     await ref.set(room, { merge: true });
@@ -477,31 +418,10 @@ function loadRooms() {
 
 async function loadMemberProfiles(memberIds = []) {
   await Promise.all(memberIds.map(async (uid) => {
+    if (knownUsers.has(uid)) return;
     const snap = await db.collection("users").doc(uid).get();
     if (snap.exists) knownUsers.set(uid, snap.data());
   }));
-}
-
-function listenMemberProfiles(memberIds = []) {
-  unsubscribeMemberProfiles.forEach((unsubscribe) => unsubscribe());
-  unsubscribeMemberProfiles = [];
-
-  memberIds.forEach((uid) => {
-    const unsubscribe = db.collection("users").doc(uid).onSnapshot((snap) => {
-      if (!snap.exists) return;
-      knownUsers.set(uid, snap.data());
-
-      if (uid === currentUser?.uid) {
-        currentProfile = { ...currentProfile, ...snap.data() };
-        renderCurrentUser();
-      }
-
-      updateChatInputState();
-      renderMessages(false);
-    }, (error) => showError(error));
-
-    unsubscribeMemberProfiles.push(unsubscribe);
-  });
 }
 
 async function selectRoom(roomId, room) {
@@ -512,24 +432,13 @@ async function selectRoom(roomId, room) {
 
   activeRoomId = roomId;
   activeRoom = room;
-  db.collection("rooms").doc(roomId).onSnapshot((snap) => {
-	  if (!snap.exists || activeRoomId !== roomId) return;
-
-	  activeRoom = {
-		id: snap.id,
-		...snap.data()
-	  };
-
-	  updateChatInputState();
-	});
   allMessages = [];
-  renderedMessageIds = new Set();
+
   $("current-room-name").textContent = room.name || "Chatroom";
   $("room-members").textContent = (room.memberEmails || []).join(", ");
   $("messages").innerHTML = "";
   $("invite-room-btn").disabled = false;
   await loadMemberProfiles(room.members || []);
-  listenMemberProfiles(room.members || []);
   updateChatInputState();
 
   clearReply();
@@ -710,14 +619,12 @@ function renderMessages(shouldScroll = false) {
     const mine = m.sender === currentUser.uid;
     const div = document.createElement("article");
     div.id = `msg-${m.id}`;
-	const isNewMessage = activeRoomId && !renderedMessageIds.has(m.id);
-	div.className = `message ${mine ? "my-msg" : "other-msg"} ${m.deleted ? "deleted" : ""} ${isNewMessage ? "new-message" : ""}`;
-	renderedMessageIds.add(m.id);
+    div.className = `message ${mine ? "my-msg" : "other-msg"} ${m.deleted ? "deleted" : ""}`;
     const time = m.timestamp ? new Date(m.timestamp.seconds * 1000).toLocaleString() : "sending...";
     const replyHtml = m.replyTo ? `<div class="reply-box" data-reply-id="${clean(m.replyTo.id)}">↪ ${clean(m.replyTo.senderName || "")}: ${clean(m.replyTo.text || "[image]")}</div>` : "";
     const bodyHtml = m.deleted
       ? `<em>Message unsent</em>`
-      : `<span class="message-text">${formatMessageText(m.text || "")}</span>${m.imageData ? `<img class="message-image" src="${m.imageData}" alt="sent image">` : ""}`;
+      : `${clean(m.text || "")}${m.imageData ? `<img class="message-image" src="${m.imageData}" alt="sent image">` : ""}`;
 	const reactionList = Array.isArray(m.reactions) ? m.reactions : [];
 	const reactions = reactionList
 	  .map((r) => `<span class="reaction">${clean(r.emoji)} ${clean(userLabel(r.uid))}</span>`)
@@ -856,58 +763,19 @@ function maybeNotifyUnreadMessages(roomId, messages, firstLoad) {
   });
 }
 
-async function getBlockTargetUser() {
-  const typedEmail = $("invite-email").value.trim();
-  if (typedEmail) return findUserByEmail(typedEmail);
-
-  const otherUid = getOtherDirectMember();
-  if (!otherUid) {
-    throw new Error("Enter a user's email, or select a direct chat first.");
-  }
-
-  let profile = knownUsers.get(otherUid);
-  if (!profile) {
-    const snap = await db.collection("users").doc(otherUid).get();
-    if (!snap.exists) throw new Error("Cannot find that user profile.");
-    profile = snap.data();
-    knownUsers.set(otherUid, profile);
-  }
-
-  return { uid: otherUid, ...profile };
-}
-
 async function blockUserFromInput() {
   try {
-    const friend = await getBlockTargetUser();
+    const friend = await findUserByEmail($("invite-email").value);
     if (friend.uid === currentUser.uid) throw new Error("You cannot block yourself.");
-
     await db.collection("users").doc(currentUser.uid).set({
       blockedUsers: FieldValue.arrayUnion(friend.uid),
       updatedAt: FieldValue.serverTimestamp()
     }, { merge: true });
-	if (isDirectRoom() && getOtherDirectMember() === friend.uid) {
-	  await db.collection("rooms").doc(activeRoomId).set({
-		blockedBy: FieldValue.arrayUnion(currentUser.uid),
-		updatedAt: FieldValue.serverTimestamp()
-	  }, { merge: true });
-
-	  activeRoom.blockedBy = Array.from(new Set([
-		...(Array.isArray(activeRoom.blockedBy) ? activeRoom.blockedBy : []),
-		currentUser.uid
-	  ]));
-	}
-
     currentProfile.blockedUsers = Array.from(new Set([...(blockedUsersOf(currentProfile)), friend.uid]));
     knownUsers.set(currentUser.uid, currentProfile);
-
     updateChatInputState();
     renderMessages(false);
-
-    if (isDirectRoom() && getOtherDirectMember() === friend.uid) {
-      alert(`Blocked ${friend.username || friend.email}. This direct chat is now disabled.`);
-    } else {
-      alert(`Blocked ${friend.username || friend.email}. In group chats, your messages are mutually hidden.`);
-    }
+    alert(`Blocked ${friend.username || friend.email}.`);
   } catch (e) {
     alert(e.message || e);
   }
@@ -915,31 +783,15 @@ async function blockUserFromInput() {
 
 async function unblockUserFromInput() {
   try {
-    const friend = await getBlockTargetUser();
-
+    const friend = await findUserByEmail($("invite-email").value);
     await db.collection("users").doc(currentUser.uid).set({
       blockedUsers: FieldValue.arrayRemove(friend.uid),
       updatedAt: FieldValue.serverTimestamp()
     }, { merge: true });
-
-    const directRoomId = [currentUser.uid, friend.uid].sort().join("_");
-
-    await db.collection("rooms").doc(directRoomId).set({
-      blockedBy: FieldValue.arrayRemove(currentUser.uid),
-      updatedAt: FieldValue.serverTimestamp()
-    }, { merge: true });
-
-    if (activeRoomId === directRoomId && activeRoom) {
-      activeRoom.blockedBy = (Array.isArray(activeRoom.blockedBy) ? activeRoom.blockedBy : [])
-        .filter((uid) => uid !== currentUser.uid);
-    }
-
     currentProfile.blockedUsers = blockedUsersOf(currentProfile).filter((uid) => uid !== friend.uid);
     knownUsers.set(currentUser.uid, currentProfile);
-
     updateChatInputState();
     renderMessages(false);
-
     alert(`Unblocked ${friend.username || friend.email}.`);
   } catch (e) {
     alert(e.message || e);

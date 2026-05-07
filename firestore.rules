@@ -11,11 +11,34 @@ service cloud.firestore {
       return signedIn() && request.auth.uid == uid;
     }
 
+    function roomPath(roomId) {
+      return /databases/$(database)/documents/rooms/$(roomId);
+    }
+
+    function userPath(uid) {
+      return /databases/$(database)/documents/users/$(uid);
+    }
+
     function isRoomMember(roomId) {
       return signedIn()
-        && exists(/databases/$(database)/documents/rooms/$(roomId))
-        && request.auth.uid in get(/databases/$(database)/documents/rooms/$(roomId)).data.members;
+        && exists(roomPath(roomId))
+        && request.auth.uid in get(roomPath(roomId)).data.members;
     }
+
+	function isDirectRoom(roomId) {
+	  return get(roomPath(roomId)).data.members is list
+		&& get(roomPath(roomId)).data.members.size() == 2
+		&& get(roomPath(roomId)).data.type != "group";
+	}
+
+	function blockedInRoom(roomId) {
+	  return get(roomPath(roomId)).data.blockedBy is list
+		&& get(roomPath(roomId)).data.blockedBy.size() > 0;
+	}
+
+	function canSendToRoom(roomId) {
+	  return !isDirectRoom(roomId) || !blockedInRoom(roomId);
+	}
 
     match /users/{uid} {
       allow create: if isSelf(uid);
@@ -37,16 +60,17 @@ service cloud.firestore {
 
       allow delete: if false;
 
-		match /messages/{messageId} {
-		  allow read: if isRoomMember(roomId);
+      match /messages/{messageId} {
+        allow read: if isRoomMember(roomId);
 
-		  allow create: if isRoomMember(roomId)
-			&& request.resource.data.sender == request.auth.uid;
+        allow create: if isRoomMember(roomId)
+          && canSendToRoom(roomId)
+          && request.resource.data.sender == request.auth.uid;
 
-		  allow update: if isRoomMember(roomId);
+        allow update: if isRoomMember(roomId);
 
-		  allow delete: if false;
-		}
+        allow delete: if false;
+      }
     }
   }
 }

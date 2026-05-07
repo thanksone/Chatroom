@@ -4,7 +4,7 @@ This project is a Firebase chatroom app for the Software Studio midterm.
 
 ## Functions
 
-- Email sign up and sign in by Firebase Authentication.
+- Email sign up/sign in and Google sign in/sign up by Firebase Authentication.
 - Private chatrooms: enter a registered friend's email and click **Create Private Room**.
 - Group chat: after selecting a room, enter another registered email and click **Invite To Current Room**.
 - Realtime Firestore messages: all members can see messages and history is loaded when opening a room.
@@ -21,7 +21,7 @@ This project is a Firebase chatroom app for the Software Studio midterm.
 ## How to use the website
 
 1. Open the deployed Firebase Hosting URL.
-2. Register two accounts with different email addresses.
+2. Register two accounts with different email addresses, or click **Sign in / up with Google**.
 3. Sign in with one account.
 4. Type the second account's email into **Friend email**.
 5. Click **Create Private Room**.
@@ -56,7 +56,7 @@ In Firebase Console:
 
 1. Create a Firebase project.
 2. Add a Web App.
-3. Enable **Authentication > Sign-in method > Email/Password**.
+3. Enable **Authentication > Sign-in method > Email/Password** and **Google**.
 4. Create a Firestore database.
 5. Add your local/deployed domain in **Authentication > Settings > Authorized domains** if needed.
 
@@ -97,3 +97,18 @@ Open the hosting URL and create two accounts. Create a private room using the ot
 ## Submission reminder
 
 Do not include `node_modules` in the ZIP file. Generate and submit the MD5 checksum according to the course SOP.
+
+
+## Block / unblock behavior
+
+- Direct chats are rooms with exactly two members and `type: "direct"` or older `type: "private"`.
+- If User A blocks User B, both users will see a warning in the direct chat history and the message input/image upload will be disabled.
+- User B cannot send direct messages to User A anymore. This is enforced in both the UI and Firestore security rules.
+- Group chats are rooms with `type: "group"`. Blocking does not disable the whole group chat. Instead, messages between the blocker and blocked user are mutually hidden.
+- To block or unblock someone, select a direct chat and press Block User / Unblock User, or type the target user's email in the Friend email box first.
+
+## Advanced components added in this version
+
+- **Google sign in/up:** click **Sign in / up with Google** on the login screen. In Firebase Console, remember to enable Authentication > Sign-in method > Google and add your Firebase Hosting domain to authorized domains.
+- **CSS animation:** login card entrance animation, room list entrance animation, message slide-in animation, and input glow when typing.
+- **Safe code sending / XSS handling:** message text is escaped before rendering. This means code such as `<script>alert("example")</script>` or `<h1>example</h1>` is shown as text, not executed or rendered as HTML. Line breaks and indentation are preserved for pasted code snippets.
