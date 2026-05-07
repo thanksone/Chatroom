@@ -13,7 +13,7 @@ A Firebase-based chatroom web app for the Software Studio midterm project.
 | Firebase Hosting | Done | `firebase.json`, `index.html`, `/__/firebase/init.js` |
 | Authenticated database read/write | Done | `firestore.rules`, `main.js` Firestore calls |
 | RWD | Done | `style.css`, media query for small screens |
-| Git version control | Done locally | Use your GitLab/GitHub URL for submission |
+| Git version control | Done | https://github.com/thanksone/Chatroom |
 | Chatroom | Done | Direct rooms, group invite, history loading, realtime messages |
 
 ### Advanced components
@@ -180,43 +180,3 @@ firebase emulators:start --only hosting,firestore
 ```
 
 Then open the local hosting URL shown in the terminal.
-
-## Testing checklist
-
-Before submission, test these with two browser windows or one normal window plus one incognito window:
-
-1. Sign up user A with email/password.
-2. Sign up user B with email/password.
-3. Sign in user A.
-4. Create a direct room with user B's email.
-5. Send text messages from both sides.
-6. Refresh the page and confirm history loads.
-7. Reply to a message and click the reply preview to highlight the original.
-8. Edit and unsend your own message.
-9. Send an image.
-10. Search message text.
-11. Add and remove emoji reactions.
-12. Upload a profile picture and check whether it appears beside messages.
-13. Enable Chrome notifications and test incoming messages while the tab is unfocused.
-14. Block user B from user A and confirm direct chat is disabled with a warning.
-15. Unblock user B and confirm direct chat works again.
-16. Invite a third user to make a group chat and confirm blocking hides mutual messages instead of disabling the group.
-
-## Submission notes
-
-Do not include these in the submitted ZIP:
-
-- `node_modules/`
-- `.git/`
-- `.firebase/`
-- Vim swap files such as `.main.js.swp`
-- Backup files such as `main.js.bak`
-
-Generate the checksum after creating the final ZIP:
-
-```bash
-zip -r Midterm_Project_STUDENTID.zip . -x "node_modules/*" ".git/*" ".firebase/*" "*.swp" "*.bak"
-md5sum Midterm_Project_STUDENTID.zip
-```
-
-Submit the ZIP, MD5 checksum, deployed web link, and Git URL according to the course SOP.
