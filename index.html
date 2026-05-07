@@ -30,6 +30,7 @@
           <small id="display-email"></small>
         </div>
         <button id="open-profile" class="small">Edit</button>
+        <button id="notify-btn" class="small secondary">Notify</button>
         <button id="logout-btn" class="small secondary">Logout</button>
       </div>
 
@@ -37,6 +38,10 @@
         <input type="email" id="invite-email" placeholder="Friend email" />
         <button id="create-room-btn">Create Private Room</button>
         <button id="invite-room-btn" class="secondary" disabled>Invite To Current Room</button>
+        <div class="block-buttons">
+          <button id="block-user-btn" class="secondary">Block User</button>
+          <button id="unblock-user-btn" class="secondary">Unblock User</button>
+        </div>
       </div>
       <div id="room-list"></div>
     </aside>
@@ -46,6 +51,7 @@
         <div>
           <h2 id="current-room-name">Select a chat</h2>
           <small id="room-members"></small>
+          <small id="block-warning" class="warning-text"></small>
         </div>
         <input id="search-input" type="search" placeholder="Search messages" />
       </header>
@@ -78,7 +84,10 @@
   <dialog id="profile-modal">
     <form method="dialog" class="card modal-card">
       <h2>Edit Profile</h2>
-      <label>Profile picture URL or base64<input id="profile-photo" /></label>
+      <label>Profile picture
+        <input id="profile-photo-file" type="file" accept="image/*" />
+      </label>
+      <img id="profile-photo-preview" class="profile-preview" src="https://placehold.co/96x96?text=Me" alt="Profile preview" />
       <label>Username<input id="profile-username" /></label>
       <label>Email<input id="profile-email" disabled /></label>
       <label>Phone number<input id="profile-phone" /></label>

@@ -32,7 +32,11 @@ let currentProfile = null;
 let currentRoomId = null;
 let currentRoomData = null;
 
+let activeRoomId = null;
 let activeRoom = null;
+let selectedProfilePhotoData = "";
+let notifiedMessageIdsByRoom = new Map();
+let initializedMessageRooms = new Set();
 let unsubscribeRooms = null;
 let unsubscribeMessages = null;
 let replyTarget = null;
@@ -55,6 +59,53 @@ function userLabel(uid) {
   const u = knownUsers.get(uid);
   return clean((u && (u.username || u.email)) || "Unknown user");
 }
+
+function userPhoto(uid) {
+  const u = knownUsers.get(uid);
+  return (u && u.photoURL) || "https://placehold.co/80x80?text=User";
+}
+
+function blockedUsersOf(profile) {
+  return Array.isArray(profile?.blockedUsers) ? profile.blockedUsers : [];
+}
+
+function iBlocked(uid) {
+  return blockedUsersOf(currentProfile).includes(uid);
+}
+
+function blockedMe(uid) {
+  return blockedUsersOf(knownUsers.get(uid)).includes(currentUser?.uid);
+}
+
+function isHiddenByBlock(senderUid) {
+  if (!senderUid || senderUid === currentUser?.uid) return false;
+  return iBlocked(senderUid) || blockedMe(senderUid);
+}
+
+function activeDirectBlockInfo() {
+  if (!activeRoom || !currentUser) return { blocked: false, message: "" };
+  const members = activeRoom.members || [];
+  if (members.length !== 2) return { blocked: false, message: "" };
+  const otherUid = members.find((uid) => uid !== currentUser.uid);
+  if (!otherUid) return { blocked: false, message: "" };
+  if (iBlocked(otherUid)) {
+    return { blocked: true, message: `You blocked ${userLabel(otherUid)}. Unblock this user to continue chatting.` };
+  }
+  if (blockedMe(otherUid)) {
+    return { blocked: true, message: `${userLabel(otherUid)} has blocked you. You can no longer send direct messages in this chat.` };
+  }
+  return { blocked: false, message: "" };
+}
+
+function updateChatInputState() {
+  const info = activeDirectBlockInfo();
+  const warning = $("block-warning");
+  if (warning) warning.textContent = info.message;
+  const disabled = !activeRoomId || info.blocked;
+  $("msg-input").disabled = disabled;
+  $("send-btn").disabled = disabled;
+  $("image-input").disabled = disabled;
+}
 function cleanupSessionUI() {
   if (unsubscribeRooms) {
     unsubscribeRooms();
@@ -73,6 +124,7 @@ function cleanupSessionUI() {
   replyTarget = null;
   allMessages = [];
   emojiTargetId = null;
+  selectedProfilePhotoData = "";
 
   $("room-list").innerHTML = "";
   $("messages").innerHTML = "";
@@ -82,6 +134,10 @@ function cleanupSessionUI() {
   $("invite-email").value = "";
   $("search-input").value = "";
   $("invite-room-btn").disabled = true;
+  $("block-warning").textContent = "";
+  $("msg-input").disabled = true;
+  $("send-btn").disabled = true;
+  $("image-input").disabled = true;
 
   $("app").classList.add("hidden");
   $("auth-container").classList.remove("hidden");
@@ -97,6 +153,7 @@ async function ensureUserProfile(user) {
     photoURL: user.photoURL || "",
     phone: "",
     address: "",
+    blockedUsers: [],
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp()
   };
@@ -141,7 +198,9 @@ $("search-input").addEventListener("input", () => renderMessages(false));
 $("cancel-reply").onclick = clearReply;
 
 $("open-profile").onclick = () => {
-  $("profile-photo").value = currentProfile.photoURL || "";
+  selectedProfilePhotoData = currentProfile.photoURL || "";
+  $("profile-photo-file").value = "";
+  $("profile-photo-preview").src = selectedProfilePhotoData || "https://placehold.co/96x96?text=Me";
   $("profile-username").value = currentProfile.username || "";
   $("profile-email").value = currentUser.email || "";
   $("profile-phone").value = currentProfile.phone || "";
@@ -150,6 +209,19 @@ $("open-profile").onclick = () => {
 };
 $("close-profile-btn").onclick = () => $("profile-modal").close();
 $("save-profile-btn").onclick = saveProfile;
+$("profile-photo-file").onchange = async (e) => {
+  try {
+    const file = e.target.files[0];
+    if (!file) return;
+    selectedProfilePhotoData = await resizeImageToDataUrl(file, 256, 256, 0.75);
+    $("profile-photo-preview").src = selectedProfilePhotoData;
+  } catch (err) {
+    showError(err);
+  }
+};
+$("notify-btn").onclick = requestNotificationPermission;
+$("block-user-btn").onclick = blockUserFromInput;
+$("unblock-user-btn").onclick = unblockUserFromInput;
 
 $("create-room-btn").onclick = createPrivateRoom;
 $("invite-room-btn").onclick = inviteToCurrentRoom;
@@ -194,6 +266,8 @@ $("image-input").onchange = async (e) => {
   try {
     const file = e.target.files[0];
     if (!file || !activeRoomId) return;
+    const blockInfo = activeDirectBlockInfo();
+    if (blockInfo.blocked) { alert(blockInfo.message); return; }
 
     const imageData = await resizeImageToDataUrl(file, 800, 800, 0.7);
 
@@ -206,10 +280,12 @@ $("image-input").onchange = async (e) => {
         text: "",
         sender: currentUser.uid,
         senderName: currentProfile.username || currentUser.email,
+        senderEmail: currentUser.email,
         timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
         edited: false,
-        reactions: {},
-		deleted: false,
+        reactions: [],
+        deleted: false,
         replyTo: replyTarget ? {
           id: replyTarget.id,
           text: replyTarget.text || "[Image]",
@@ -252,7 +328,7 @@ auth.onAuthStateChanged(async (user) => {
 });
 async function saveProfile() {
   const data = {
-    photoURL: $("profile-photo").value.trim(),
+    photoURL: selectedProfilePhotoData || currentProfile.photoURL || "",
     username: $("profile-username").value.trim() || currentUser.email.split("@")[0],
     phone: $("profile-phone").value.trim(),
     address: $("profile-address").value.trim(),
@@ -262,6 +338,7 @@ async function saveProfile() {
   currentProfile = { ...currentProfile, ...data };
   knownUsers.set(currentUser.uid, currentProfile);
   renderCurrentUser();
+  renderMessages(false);
   $("profile-modal").close();
 }
 
@@ -278,6 +355,8 @@ async function findUserByEmail(email) {
 async function createPrivateRoom() {
   try {
     const friend = await findUserByEmail($("invite-email").value);
+    if (iBlocked(friend.uid)) throw new Error("You blocked this user. Unblock them before creating a private room.");
+    if (blockedUsersOf(friend).includes(currentUser.uid)) throw new Error("This user has blocked you, so you cannot create a private room with them.");
     const members = [currentUser.uid, friend.uid].sort();
     const roomId = members.join("_");
 
@@ -359,6 +438,8 @@ async function selectRoom(roomId, room) {
   $("room-members").textContent = (room.memberEmails || []).join(", ");
   $("messages").innerHTML = "";
   $("invite-room-btn").disabled = false;
+  await loadMemberProfiles(room.members || []);
+  updateChatInputState();
 
   clearReply();
 
@@ -372,11 +453,12 @@ async function selectRoom(roomId, room) {
 	  const wasNearBottom = box ? isNearBottom(box) : true;
 
 	  allMessages = snap.docs.map((doc) => ({
-		id: doc.id,
-		...doc.data()
-	  }));
+        id: doc.id,
+        ...doc.data()
+      }));
 
-	  renderMessages(firstLoad || wasNearBottom);
+      maybeNotifyUnreadMessages(roomId, allMessages, firstLoad);
+      renderMessages(firstLoad || wasNearBottom);
 	}, (error) => {
 	  showError(error);
 	});
@@ -384,6 +466,11 @@ async function selectRoom(roomId, room) {
 
 async function addMessage(extra) {
   if (!activeRoomId) return;
+  const blockInfo = activeDirectBlockInfo();
+  if (blockInfo.blocked) {
+    alert(blockInfo.message);
+    return;
+  }
   const data = {
     sender: currentUser.uid,
     senderName: currentProfile.username || currentUser.email,
@@ -520,7 +607,10 @@ function renderMessages(shouldScroll = false) {
   const box = $("messages");
   const keyword = $("search-input").value.trim().toLowerCase();
   box.innerHTML = "";
-  const shown = allMessages.filter((m) => !keyword || (m.text || "").toLowerCase().includes(keyword) || (m.senderName || "").toLowerCase().includes(keyword));
+  const shown = allMessages.filter((m) => {
+    if (isHiddenByBlock(m.sender)) return false;
+    return !keyword || (m.text || "").toLowerCase().includes(keyword) || (m.senderName || "").toLowerCase().includes(keyword);
+  });
   if (!activeRoomId) {
     box.innerHTML = `<p class="hint">Create or select a room to start chatting.</p>`;
     return;
@@ -540,7 +630,10 @@ function renderMessages(shouldScroll = false) {
 	  .map((r) => `<span class="reaction">${clean(r.emoji)} ${clean(userLabel(r.uid))}</span>`)
 	  .join("");
     div.innerHTML = `
-      <div class="meta">${clean(m.senderName || userLabel(m.sender))} · ${time}</div>
+      <div class="message-header">
+        <img class="message-avatar" src="${clean(userPhoto(m.sender))}" alt="avatar">
+        <div class="meta">${clean(m.senderName || userLabel(m.sender))} · ${time}</div>
+      </div>
       ${replyHtml}
       <div class="body">${bodyHtml}</div>
       <div class="reactions">${reactions}</div>
@@ -550,12 +643,11 @@ function renderMessages(shouldScroll = false) {
         ${mine ? `<button data-action="edit">Edit</button><button data-action="unsend">Unsend</button>` : ""}
       </div>`}`;
     div.querySelector('[data-action="reply"]')?.addEventListener("click", () => setReplyMessage(m));
-	div.querySelector('[data-action="react"]')?.addEventListener("click", () => {
-	  emojiTargetId = m.id;
-	  const rect = div.getBoundingClientRect();
-	  $("emoji-picker").style.left = `${Math.max(12, rect.left)}px`;
-	  $("emoji-picker").classList.remove("hidden");
-	});
+    const reactBtn = div.querySelector('[data-action="react"]');
+    reactBtn?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openEmojiPickerForMessage(m.id, reactBtn);
+    });
     div.querySelector('[data-action="edit"]')?.addEventListener("click", () => editMessage(m));
     div.querySelector('[data-action="unsend"]')?.addEventListener("click", () => unsendMessage(m.id));
     div.querySelector(".reply-box")?.addEventListener("click", () => scrollToMessage(m.replyTo.id));
@@ -633,4 +725,75 @@ function scrollToMessage(msgId) {
   el.scrollIntoView({ behavior: "smooth", block: "center" });
   el.classList.add("highlight");
   setTimeout(() => el.classList.remove("highlight"), 1600);
+}
+
+
+async function requestNotificationPermission() {
+  if (!("Notification" in window)) {
+    alert("This browser does not support Chrome notifications.");
+    return;
+  }
+  const result = await Notification.requestPermission();
+  alert(result === "granted" ? "Chrome notifications enabled." : "Notification permission was not granted.");
+}
+
+function maybeNotifyUnreadMessages(roomId, messages, firstLoad) {
+  if (!("Notification" in window) || Notification.permission !== "granted" || firstLoad) return;
+  if (!document.hidden && document.hasFocus()) return;
+
+  let notified = notifiedMessageIdsByRoom.get(roomId);
+  if (!notified) {
+    notified = new Set();
+    notifiedMessageIdsByRoom.set(roomId, notified);
+  }
+
+  messages.forEach((m) => {
+    if (!m.id || notified.has(m.id) || m.sender === currentUser?.uid || m.deleted || isHiddenByBlock(m.sender)) return;
+    notified.add(m.id);
+    const title = activeRoom?.name || "New message";
+    const body = `${m.senderName || userLabel(m.sender)}: ${m.text || (m.imageData ? "[Image]" : "New message")}`;
+    const notification = new Notification(title, {
+      body,
+      icon: userPhoto(m.sender)
+    });
+    notification.onclick = () => {
+      window.focus();
+      notification.close();
+    };
+  });
+}
+
+async function blockUserFromInput() {
+  try {
+    const friend = await findUserByEmail($("invite-email").value);
+    if (friend.uid === currentUser.uid) throw new Error("You cannot block yourself.");
+    await db.collection("users").doc(currentUser.uid).set({
+      blockedUsers: FieldValue.arrayUnion(friend.uid),
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+    currentProfile.blockedUsers = Array.from(new Set([...(blockedUsersOf(currentProfile)), friend.uid]));
+    knownUsers.set(currentUser.uid, currentProfile);
+    updateChatInputState();
+    renderMessages(false);
+    alert(`Blocked ${friend.username || friend.email}.`);
+  } catch (e) {
+    alert(e.message || e);
+  }
+}
+
+async function unblockUserFromInput() {
+  try {
+    const friend = await findUserByEmail($("invite-email").value);
+    await db.collection("users").doc(currentUser.uid).set({
+      blockedUsers: FieldValue.arrayRemove(friend.uid),
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+    currentProfile.blockedUsers = blockedUsersOf(currentProfile).filter((uid) => uid !== friend.uid);
+    knownUsers.set(currentUser.uid, currentProfile);
+    updateChatInputState();
+    renderMessages(false);
+    alert(`Unblocked ${friend.username || friend.email}.`);
+  } catch (e) {
+    alert(e.message || e);
+  }
 }

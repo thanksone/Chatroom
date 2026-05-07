@@ -8,13 +8,15 @@ This project is a Firebase chatroom app for the Software Studio midterm.
 - Private chatrooms: enter a registered friend's email and click **Create Private Room**.
 - Group chat: after selecting a room, enter another registered email and click **Invite To Current Room**.
 - Realtime Firestore messages: all members can see messages and history is loaded when opening a room.
-- Profile modal with editable profile picture URL, username, email, phone number, and address.
-- The chatroom displays sender username/email with every message.
+- Profile modal with uploadable profile picture, username, email, phone number, and address.
+- The chatroom displays sender username/email and profile picture with every message.
 - Message operations: reply, edit own message, unsend own message, search messages, send image as base64 data, and emoji reactions.
 - Reply UI: the original message is shown above the input while typing, and clicking a reply scrolls/highlights the original message.
 - XSS/code handling: message text is rendered by escaping HTML characters, so `<script>` and `<h1>` are displayed as text instead of executed as HTML.
 - Responsive layout for desktop and small screens.
 - CSS animation for new messages.
+- Chrome notifications: click **Notify** after signing in to allow notifications for unread incoming messages while the tab is not focused.
+- Block/unblock user: enter a registered email and use **Block User** or **Unblock User**. Direct chats are disabled when either side blocks the other. In group chats, messages are hidden mutually between blocker and blocked user.
 
 ## How to use the website
 
@@ -27,7 +29,10 @@ This project is a Firebase chatroom app for the Software Studio midterm.
 7. Sign in with the other account in another browser/incognito window to verify realtime chat.
 8. Use the buttons under each message for reply, emoji, edit, and unsend.
 9. Use the image button to send an image.
-10. Use the search box in the chat header to search messages.
+10. Click **Edit** to upload a profile picture and save your profile.
+11. Click **Notify** to enable Chrome notifications.
+12. To block or unblock someone, enter their email in **Friend email** and click **Block User** or **Unblock User**.
+13. Use the search box in the chat header to search messages.
 
 ## How to set up locally step by step
 

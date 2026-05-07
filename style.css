@@ -38,11 +38,12 @@ img { object-fit: cover; }
   min-height: 0;
 }
 #sidebar { border-right: 1px solid var(--line); display: flex; flex-direction: column; min-width: 0; }
-.profile-summary { padding: 14px; display: grid; grid-template-columns: 46px 1fr auto auto; gap: 10px; align-items: center; border-bottom: 1px solid var(--line); }
+.profile-summary { padding: 14px; display: grid; grid-template-columns: 46px 1fr auto auto auto; gap: 10px; align-items: center; border-bottom: 1px solid var(--line); }
 .profile-summary img { width: 46px; height: 46px; border-radius: 50%; background: var(--panel-2); }
 .profile-text { min-width: 0; }
 .profile-text strong, .profile-text small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .room-tools { padding: 12px; display: grid; gap: 8px; border-bottom: 1px solid var(--line); }
+.block-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 #room-list { overflow-y: auto; padding: 8px; }
 .room-item { width: 100%; text-align: left; background: transparent; border-radius: 12px; padding: 12px; color: var(--text-main); }
 .room-item:hover, .room-item.active { background: var(--panel-2); }
@@ -67,9 +68,11 @@ img { object-fit: cover; }
 }
 @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 .message { padding: 9px 12px; border-radius: 18px; max-width: min(72%, 620px); animation: slideIn .25s ease-out; word-break: break-word; }
+.message-header { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.message-avatar { width: 24px; height: 24px; border-radius: 50%; flex: 0 0 auto; background: var(--panel-2); }
 .my-msg { align-self: flex-end; background: var(--primary); }
 .other-msg { align-self: flex-start; background: var(--panel-2); }
-.message .meta { font-size: 11px; color: rgba(255,255,255,.75); margin-bottom: 4px; }
+.message .meta { font-size: 11px; color: rgba(255,255,255,.75); }
 .message-actions { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
 .message-actions button { padding: 4px 7px; font-size: 11px; background: rgba(0,0,0,.18); }
 .deleted { opacity: .72; font-style: italic; }
@@ -101,6 +104,8 @@ dialog { border: 0; background: transparent; color: var(--text-main); }
 dialog::backdrop { background: rgba(0,0,0,.55); }
 .modal-card { width: min(520px, calc(100vw - 24px)); padding: 22px; display: grid; gap: 12px; }
 .modal-card label { display: grid; gap: 6px; color: var(--muted); }
+.profile-preview { width: 96px; height: 96px; border-radius: 50%; background: var(--panel-2); border: 1px solid var(--line); }
+.warning-text { color: var(--danger); display: block; margin-top: 4px; }
 @media (max-width: 760px) {
   #app {
     grid-template-columns: 1fr;
@@ -122,6 +127,6 @@ dialog::backdrop { background: rgba(0,0,0,.55); }
   }
 
   .profile-summary {
-    grid-template-columns: 42px 1fr auto auto;
+    grid-template-columns: 42px 1fr auto auto auto;
   }
 }
